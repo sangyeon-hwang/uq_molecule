@@ -194,7 +194,7 @@ print("Do Single-Task Learning")
 print("Hidden dimension of graph convolution layers:", dim1)
 print("Hidden dimension of readout & MLP layers:", dim2)
 print("Maximum number of allowed atoms:", max_atoms)
-print("Batch sise:", batch_size, "Epoch size:", epoch_size)
+print("Batch size:", batch_size, "Epoch size:", epoch_size)
 print("Initial learning rate:", learning_rate, "\t Beta1:", beta1, "\t Beta2:", beta2, "for the Adam optimizer used in this training")
 
 model = mc_dropout(FLAGS)

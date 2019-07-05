@@ -1,13 +1,16 @@
-import numpy as np
 import os
-import time
-import sys
 import random
-from utils import shuffle_two_list, load_input_HIV, convert_to_graph, split_train_eval_test
+import sys
+import time
+
+import numpy as np
 from rdkit import Chem
-from mc_dropout import mc_dropout
-import tensorflow as tf
 from sklearn.metrics import accuracy_score, roc_auc_score
+import tensorflow as tf
+
+from mc_dropout import mc_dropout
+from utils import shuffle_two_list, load_input_HIV, convert_to_graph, split_train_eval_test
+
 np.set_printoptions(precision=3)
 
 def np_sigmoid(x):
@@ -164,7 +167,7 @@ learning_rate = 0.001
 regularization_scale = 1e-4
 beta1 = 0.9
 beta2 = 0.98
-prop = sys.argv[1]
+#prop = sys.argv[1]
 
 smi_total, prop_total = load_input_HIV()
 num_total = len(smi_total)
@@ -199,7 +202,7 @@ print("Do Single-Task Learning")
 print("Hidden dimension of graph convolution layers:", dim1)
 print("Hidden dimension of readout & MLP layers:", dim2)
 print("Maximum number of allowed atoms:", max_atoms)
-print("Batch sise:", batch_size, "Epoch size:", epoch_size)
+print("Batch size:", batch_size, "Epoch size:", epoch_size)
 print("Initial learning rate:", learning_rate, "\t Beta1:", beta1, "\t Beta2:", beta2, "for the Adam optimizer used in this training")
 
 model = mc_dropout(FLAGS)
