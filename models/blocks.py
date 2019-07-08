@@ -1,6 +1,7 @@
 import tensorflow as tf
-from ConcreteDropout import ConcreteDropout
 #from tensorflow.keras.layers import Dense, Conv1D
+
+from .ConcreteDropout import ConcreteDropout
 
 def conv1d_with_concrete_dropout(x, out_dim, wd, dd):
     output = ConcreteDropout(tf.keras.layers.Conv1D(filters=out_dim,

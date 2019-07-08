@@ -1,6 +1,7 @@
-import tensorflow as tf
 import numpy as np
-import blocks
+import tensorflow as tf
+
+from . import blocks
 
 class mc_dropout():
     def __init__(self, FLAGS):
@@ -37,7 +38,8 @@ class mc_dropout():
         init = tf.global_variables_initializer()
         self.sess = tf.Session()
         self.sess.run(init)
-        self.saver = tf.train.Saver()
+        if hasattr(self.FLAGS, 'max_to_keep'):
+            self.saver = tf.train.Saver(max_to_keep=self.FLAGS.max_to_keep)
         tf.train.start_queue_runners(sess=self.sess)
         print ("Network Ready")
 

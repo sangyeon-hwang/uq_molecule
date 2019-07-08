@@ -1,12 +1,17 @@
-import numpy as np
 import os
-import time
-import sys
 import random
-from utils import shuffle_two_list, load_input_cep, convert_to_graph, split_train_eval_test
+import sys
+import time
+
+import numpy as np
 from rdkit import Chem
-from mc_dropout import mc_dropout
+from sklearn.metrics import accuracy_score, roc_auc_score
 import tensorflow as tf
+
+import set_path
+from models.mc_dropout import mc_dropout
+from utils.utils import shuffle_two_list, load_input_zinc, convert_to_graph, split_train_eval_test
+
 np.set_printoptions(precision=3)
 
 def np_sigmoid(x):
@@ -51,13 +56,14 @@ def training(model, FLAGS, model_name, smi_total, prop_total):
             total_iter += 1
             A_batch, X_batch = convert_to_graph(smi_train[i*batch_size:(i+1)*batch_size], FLAGS.max_atoms) 
             Y_batch = prop_train[i*batch_size:(i+1)*batch_size]
-
+            Y_noise = np.random.normal(0.0, FLAGS.noise, Y_batch.shape[0])
+            Y_batch = Y_batch + Y_noise
+            
             Y_mean, Y_logvar, loss = model.train(A_batch, X_batch, Y_batch)
             train_loss += loss
             Y_pred = Y_mean.flatten()
             Y_pred_total = np.concatenate((Y_pred_total, Y_pred), axis=0)
             Y_batch_total = np.concatenate((Y_batch_total, Y_batch), axis=0)
-
             et_i = time.time()
             #print ("train_iter : ", total_iter, ", epoch : ", epoch, ", loss :  ", loss, "\t Time:", (et_i-st_i))
 
@@ -147,51 +153,55 @@ def training(model, FLAGS, model_name, smi_total, prop_total):
     print ("Finish Testing, Total time for test:", (test_et-test_st))
     return
 
-dim1 = 32
-dim2 = 256
-max_atoms = 75
-num_layer = 4
-batch_size = 256
-epoch_size = 100
-learning_rate = 0.001
-regularization_scale = 1e-4
-beta1 = 0.9
-beta2 = 0.98
+if __name__ == '__main__':
+    dim1 = 32
+    dim2 = 256
+    max_atoms = 75
+    num_layer = 4
+    batch_size = 256
+    epoch_size = 100
+    learning_rate = 0.001
+    regularization_scale = 1e-4
+    beta1 = 0.9
+    beta2 = 0.98
 
-smi_total, prop_total = load_input_cep()
-num_total = len(smi_total)
-num_test = int(num_total*0.2)
-num_train = num_total-num_test
-num_eval = int(num_train*0.1)
-num_train -= num_eval
+    smi_total, prop_total = load_input_zinc()
+    num_total = len(smi_total)
+    num_test = int(num_total*0.2)
+    num_train = num_total-num_test
+    num_eval = int(num_train*0.1)
+    num_train -= num_eval
 
-#os.environ["CUDA_VISIBLE_DEVICES"] = "0"
-# Set FLAGS for environment setting
-flags = tf.app.flags
-FLAGS = flags.FLAGS
-# Hyperparameters for a transfer-trained model
-flags.DEFINE_string('task_type', 'regression', '')
-flags.DEFINE_integer('hidden_dim', dim1, '')
-flags.DEFINE_integer('latent_dim', dim2, '')
-flags.DEFINE_integer('max_atoms', max_atoms, '')
-flags.DEFINE_integer('num_layers', num_layer, '# of hidden layers')
-flags.DEFINE_integer('num_attn', 4, '# of heads for multi-head attention')
-flags.DEFINE_integer('batch_size', batch_size, 'Batch size')
-flags.DEFINE_integer('epoch_size', epoch_size, 'Epoch size')
-flags.DEFINE_integer('num_train', num_train, 'Number of training data')
-flags.DEFINE_float('regularization_scale', regularization_scale, '')
-flags.DEFINE_float('beta1', beta1, '')
-flags.DEFINE_float('beta2', beta2, '')
-flags.DEFINE_string('optimizer', 'Adam', 'Options : Adam, SGD, RMSProp') 
-flags.DEFINE_float('init_lr', learning_rate, 'Batch size')
+    noise = float(sys.argv[1])
 
-model_name = 'MC-Dropout_cep'
-print("Do Single-Task Learning")
-print("Hidden dimension of graph convolution layers:", dim1)
-print("Hidden dimension of readout & MLP layers:", dim2)
-print("Maximum number of allowed atoms:", max_atoms)
-print("Batch size:", batch_size, "Epoch size:", epoch_size)
-print("Initial learning rate:", learning_rate, "\t Beta1:", beta1, "\t Beta2:", beta2, "for the Adam optimizer used in this training")
+    #os.environ["CUDA_VISIBLE_DEVICES"] = "0"
+    # Set FLAGS for environment setting
+    flags = tf.app.flags
+    FLAGS = flags.FLAGS
+    # Hyperparameters for a transfer-trained model
+    flags.DEFINE_string('task_type', 'regression', '')
+    flags.DEFINE_integer('hidden_dim', dim1, '')
+    flags.DEFINE_integer('latent_dim', dim2, '')
+    flags.DEFINE_integer('max_atoms', max_atoms, '')
+    flags.DEFINE_integer('num_layers', num_layer, '# of hidden layers')
+    flags.DEFINE_integer('num_attn', 4, '# of heads for multi-head attention')
+    flags.DEFINE_integer('batch_size', batch_size, 'Batch size')
+    flags.DEFINE_integer('epoch_size', epoch_size, 'Epoch size')
+    flags.DEFINE_integer('num_train', num_train, 'Number of training data')
+    flags.DEFINE_float('regularization_scale', regularization_scale, '')
+    flags.DEFINE_float('beta1', beta1, '')
+    flags.DEFINE_float('beta2', beta2, '')
+    flags.DEFINE_string('optimizer', 'Adam', 'Options : Adam, SGD, RMSProp') 
+    flags.DEFINE_float('init_lr', learning_rate, 'Batch size')
+    flags.DEFINE_float('noise', noise, '')
 
-model = mc_dropout(FLAGS)
-training(model, FLAGS, model_name, smi_total, prop_total)
+    model_name = 'MC-Dropout_logP_'+str(noise)
+    print("Do Single-Task Learning")
+    print("Hidden dimension of graph convolution layers:", dim1)
+    print("Hidden dimension of readout & MLP layers:", dim2)
+    print("Maximum number of allowed atoms:", max_atoms)
+    print("Batch size:", batch_size, "Epoch size:", epoch_size)
+    print("Initial learning rate:", learning_rate, "\t Beta1:", beta1, "\t Beta2:", beta2, "for the Adam optimizer used in this training")
+
+    model = mc_dropout(FLAGS)
+    training(model, FLAGS, model_name, smi_total, prop_total)

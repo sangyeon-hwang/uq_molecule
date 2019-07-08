@@ -1,5 +1,6 @@
-import numpy as np
 import random
+
+import numpy as np
 from rdkit import Chem
 
 def shuffle_two_list(list1, list2):
