@@ -5,7 +5,6 @@ import time
 
 import numpy as np
 from rdkit import Chem
-from sklearn.metrics import accuracy_score, roc_auc_score
 import tensorflow as tf
 
 import set_path

@@ -25,7 +25,7 @@ def set_path(parent_index=1):
     """
     ## The directory of this module.
     here = os.path.dirname(
-        os.path.abspath(
+        os.path.realpath(
             inspect.getfile(
                 inspect.currentframe()
     )))
