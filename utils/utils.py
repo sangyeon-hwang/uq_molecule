@@ -3,6 +3,35 @@ import random
 import numpy as np
 import pandas as pd
 from rdkit import Chem
+from sklearn import metrics
+
+def available_cuda_devices():
+    import pynvml
+    pynvml.nvmlInit()
+    total = pynvml.nvmlDeviceGetCount()
+    idle_idxs = []
+    for idx in range(total):
+        handle = pynvml.nvmlDeviceGetHandleByIndex(idx)
+        if not pynvml.nvmlDeviceGetComputeRunningProcesses(handle):
+            idle_idxs.append(idx)
+    return idle_idxs
+
+def np_sigmoid(x):
+    return 1./(1.+np.exp(-x))
+
+def calculate_accuracy_auroc(y_truth, y_pred):    
+    y_truth = y_truth.astype(int)
+    try:
+        auroc = metrics.roc_auc_score(y_truth, y_pred)
+    except:
+        print("Error in computing AUROC!")
+        auroc = 0.0    
+    y_pred = np.around(y_pred).astype(int)
+    accuracy = metrics.accuracy_score(y_truth, y_pred)
+    precision = metrics.precision_score(y_truth, y_pred)
+    recall = metrics.recall_score(y_truth, y_pred)
+    f1_score = 2 * (precision*recall) / (precision+recall)
+    return accuracy, auroc, precision, recall, f1_score
 
 def shuffle_two_list(list1, list2):
     list_total = list(zip(list1,list2))

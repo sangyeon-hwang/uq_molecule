@@ -138,7 +138,7 @@ def training(model, FLAGS,
         # MC-sampling
         P_mean = []
         for n in range(FLAGS.num_test_samplings):
-            Y_mean, _, loss = model.test(A_batch, X_batch, Y_batch)
+            Y_mean, Y_logvar, loss = model.test(A_batch, X_batch, Y_batch)
             P_mean.append(Y_mean.flatten())
 
         P_mean = np_sigmoid(np.asarray(P_mean))
@@ -257,7 +257,7 @@ if __name__ == '__main__':
                         type=int,
                         default=3,
                         help='# of MC samplings in validation')
-    parser.add_argument('--num_test_sampling',
+    parser.add_argument('--num_test_samplings',
                         type=int,
                         default=20,
                         help='# of MC samplings in test time')
@@ -291,6 +291,7 @@ if __name__ == '__main__':
     if not os.path.exists(FLAGS.statistics_directory):
         os.mkdir(FLAGS.statistics_directory)
 
+    print("CUDA_VISIBLE_DEVICES=", os.environ['CUDA_VISIBLE_DEVICES'])
     print("Do Single-Task Learning")
     print("Hidden dimension of graph convolution layers:", FLAGS.hidden_dim)
     print("Hidden dimension of readout & MLP layers:", FLAGS.latent_dim)

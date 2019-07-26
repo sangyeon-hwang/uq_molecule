@@ -40,6 +40,8 @@ class mc_dropout():
         self.sess.run(init)
         if hasattr(self.FLAGS, 'max_to_keep'):
             self.saver = tf.train.Saver(max_to_keep=self.FLAGS.max_to_keep)
+        else:
+            self.saver = tf.train.Saver()
         tf.train.start_queue_runners(sess=self.sess)
         print ("Network Ready")
 
