@@ -3,10 +3,10 @@ import tensorflow as tf
 
 from .ConcreteDropout import ConcreteDropout
 
-def conv1d_with_concrete_dropout(x, out_dim, wd, dd):
+def conv1d_with_concrete_dropout(x, out_dim, wd, dd, use_bias=False):
     output = ConcreteDropout(tf.keras.layers.Conv1D(filters=out_dim,
                                                     kernel_size=1,
-                                                    use_bias=True,
+                                                    use_bias=use_bias,
                                                     activation=None,
                                                     kernel_initializer=tf.contrib.layers.xavier_initializer(),
                                                     bias_initializer=tf.contrib.layers.xavier_initializer()),
@@ -15,9 +15,9 @@ def conv1d_with_concrete_dropout(x, out_dim, wd, dd):
                              trainable=True )(x, training=True)
     return output
 
-def dense_with_concrete_dropout(x, out_dim, wd, dd):   
+def dense_with_concrete_dropout(x, out_dim, wd, dd, use_bias=False):
     output = ConcreteDropout(tf.keras.layers.Dense(units=out_dim,
-                                                   use_bias=True,
+                                                   use_bias=use_bias,
                                                    activation=None,
                                                    kernel_initializer=tf.contrib.layers.xavier_initializer(), 
                                                    bias_initializer=tf.contrib.layers.xavier_initializer()),
