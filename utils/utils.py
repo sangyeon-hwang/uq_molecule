@@ -1,3 +1,4 @@
+import os
 import random
 
 import numpy as np
@@ -15,6 +16,10 @@ def available_cuda_devices():
         if not pynvml.nvmlDeviceGetComputeRunningProcesses(handle):
             idle_idxs.append(idx)
     return idle_idxs
+
+def set_cuda_devices(num_devices=1):
+    device_ids = [str(idx) for idx in available_cuda_devices()]
+    os.environ['CUDA_VISIBLE_DEVICES'] = ','.join(device_ids[:num_devices])
 
 def np_sigmoid(x):
     return 1./(1.+np.exp(-x))

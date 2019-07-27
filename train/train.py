@@ -261,6 +261,9 @@ if __name__ == '__main__':
                         type=int,
                         default=20,
                         help='# of MC samplings in test time')
+    parser.add_argument('--set_cuda',
+                        action='store_true',
+                        help='Set CUDA_VISIBLE_DEVICES inside the script')
     FLAGS = parser.parse_args()
 
     # Load data.
@@ -291,7 +294,6 @@ if __name__ == '__main__':
     if not os.path.exists(FLAGS.statistics_directory):
         os.mkdir(FLAGS.statistics_directory)
 
-    print("CUDA_VISIBLE_DEVICES=", os.environ['CUDA_VISIBLE_DEVICES'])
     print("Do Single-Task Learning")
     print("Hidden dimension of graph convolution layers:", FLAGS.hidden_dim)
     print("Hidden dimension of readout & MLP layers:", FLAGS.latent_dim)
@@ -302,6 +304,11 @@ if __name__ == '__main__':
           "\tBeta1:", FLAGS.beta1,
           "\tBeta2:", FLAGS.beta2,
           "\tfor the ", FLAGS.optimizer, " optimizer used in this training")
+
+    # Set CUDA_VISIBLE_DEVICES if requested.
+    if FLAGS.set_cuda:
+        utils.set_cuda_devices()
+    print("CUDA_VISIBLE_DEVICES=", os.environ.get('CUDA_VISIBLE_DEVICES'))
 
     model = mc_dropout(FLAGS)
     training(model, FLAGS,

@@ -135,6 +135,9 @@ if __name__ == '__main__':
                         type=int,
                         default=20,
                         help='# of MC samplings')
+    parser.add_argument('--set_cuda',
+                        action='store_true',
+                        help='Set CUDA_VISIBLE_DEVICES inside the script')
     FLAGS = parser.parse_args()
 
     # Load data.
@@ -145,6 +148,11 @@ if __name__ == '__main__':
     print("Model path to use:", FLAGS.model_path)
     print("Num data to predict:", len(smi_list))
     print("Num MC samplings:", FLAGS.num_samplings)
+
+    # Set CUDA_VISIBLE_DEVICES if requested.
+    if FLAGS.set_cuda:
+        utils.set_cuda_devices()
+    print("CUDA_VISIBLE_DEVICES=", os.environ.get('CUDA_VISIBLE_DEVICES'))
 
     model = mc_dropout(FLAGS)
     model.restore(FLAGS.model_path)
