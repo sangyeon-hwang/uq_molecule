@@ -24,7 +24,7 @@ def predict(model, FLAGS, smi_list, prop_list=None):
     num_batches = len(smi_list)//FLAGS.batch_size + 1
 
     Y_pred_total = np.array([])
-    #Y_batch_total = np.array([])
+    Y_batch_total = np.array([])
     ale_unc_total = np.array([])
     epi_unc_total = np.array([])
     tot_unc_total = np.array([])
@@ -32,28 +32,39 @@ def predict(model, FLAGS, smi_list, prop_list=None):
         A_batch, X_batch = utils.convert_to_graph(
             smi_list[i*FLAGS.batch_size : (i+1)*FLAGS.batch_size],
             FLAGS.max_atoms)
-        #Y_batch = prop_test[i*FLAGS.batch_size:(i+1)*FLAGS.batch_size]
+        if prop_list:
+            Y_batch = prop_list[i*FLAGS.batch_size:(i+1)*FLAGS.batch_size]
         
         # MC-sampling
         P_mean = []
+        P_logvar = []
         for _ in range(FLAGS.num_samplings):
             Y_mean, Y_logvar = model.predict(A_batch, X_batch)
             P_mean.append(Y_mean.flatten())
+            P_logvar.append(Y_logvar.flatten())
 
-        P_mean = np_sigmoid(np.asarray(P_mean))
+        if FLAGS.task_type == 'classification':
+            P_mean = np_sigmoid(np.asarray(P_mean))
+            ale_unc = np.mean(P_mean*(1.0-P_mean), axis=0)
+            epi_unc = np.mean(P_mean**2, axis=0) - np.mean(P_mean, axis=0)**2
+        elif FLAGS.task_type == 'regression':
+            P_mean = np.asarray(P_mean)
+            P_logvar = np.exp(np.asarray(P_logvar))            
+            ale_unc = np.mean(P_logvar, axis=0)
+            epi_unc = np.var(P_mean, axis=0)
         mean = np.mean(P_mean, axis=0)
-        ale_unc = np.mean(P_mean*(1.0-P_mean), axis=0)
-        epi_unc = np.mean(P_mean**2, axis=0) - np.mean(P_mean, axis=0)**2
         tot_unc = ale_unc + epi_unc
     
-        #Y_batch_total = np.concatenate((Y_batch_total, Y_batch), axis=0)
+        if prop_list:
+            Y_batch_total = np.concatenate((Y_batch_total, Y_batch), axis=0)
         Y_pred_total = np.concatenate((Y_pred_total, mean), axis=0)
         ale_unc_total = np.concatenate((ale_unc_total, ale_unc), axis=0)
         epi_unc_total = np.concatenate((epi_unc_total, epi_unc), axis=0)
         tot_unc_total = np.concatenate((tot_unc_total, tot_unc), axis=0)
 
     _prefix = FLAGS.output_prefix + '_mc_'
-    #np.save(_prefix + 'truth', Y_batch_total)
+    if prop_list:
+        np.save(_prefix + 'truth', Y_batch_total)
     np.save(_prefix + 'pred', Y_pred_total)
     np.save(_prefix + 'epi_unc', epi_unc_total)
     np.save(_prefix + 'ale_unc', ale_unc_total)
@@ -144,6 +155,7 @@ if __name__ == '__main__':
     smi_list, prop_list = utils.load_input(FLAGS.input_path, FLAGS.max_atoms)
     FLAGS.num_train = len(smi_list)
 
+    print("Task type:", FLAGS.task_type)
     print("Maximum number of allowed atoms:", FLAGS.max_atoms)
     print("Model path to use:", FLAGS.model_path)
     print("Num data to predict:", len(smi_list))

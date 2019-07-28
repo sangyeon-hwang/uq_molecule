@@ -60,21 +60,27 @@ def training(model, FLAGS,
             A_batch, X_batch = utils.convert_to_graph(smi_train[i*batch_size:(i+1)*batch_size], FLAGS.max_atoms) 
             Y_batch = prop_train[i*batch_size:(i+1)*batch_size]
 
-            Y_mean, _, loss = model.train(A_batch, X_batch, Y_batch)
+            Y_mean, Y_logvar, loss = model.train(A_batch, X_batch, Y_batch)
             train_loss += loss
-            Y_pred = np_sigmoid(Y_mean.flatten())
+            if FLAGS.task_type == 'classification':
+                Y_pred = np_sigmoid(Y_mean.flatten())
+            elif FLAGS.task_type == 'regression':
+                Y_pred = Y_mean.flatten()
             Y_pred_total = np.concatenate((Y_pred_total, Y_pred), axis=0)
             Y_batch_total = np.concatenate((Y_batch_total, Y_batch), axis=0)
 
             et_i = time.time()
 
         train_loss /= num
-        train_accuracy = accuracy_score(Y_batch_total, np.around(Y_pred_total).astype(int))
-        train_auroc = 0.0
-        try:
-            train_auroc = roc_auc_score(Y_batch_total, Y_pred_total)
-        except:
-            train_auroc = 0.0    
+        if FLAGS.task_type == 'classification':
+            train_accuracy = accuracy_score(Y_batch_total, np.around(Y_pred_total).astype(int))
+            train_auroc = 0.0
+            try:
+                train_auroc = roc_auc_score(Y_batch_total, Y_pred_total)
+            except:
+                train_auroc = 0.0    
+        elif FLAGS.task_type == 'regression':
+            train_mae = np.mean(np.abs(Y_batch_total - Y_pred_total))
 
         #Eval
         Y_pred_total = np.array([])
@@ -89,23 +95,29 @@ def training(model, FLAGS,
             P_mean = []
             for n in range(FLAGS.num_eval_samplings):
                 num += 1
-                Y_mean, _, loss = model.test(A_batch, X_batch, Y_batch)
+                Y_mean, Y_logvar, loss = model.test(A_batch, X_batch, Y_batch)
                 eval_loss += loss
                 P_mean.append(Y_mean.flatten())
 
-            P_mean = np_sigmoid(np.asarray(P_mean))
+            if FLAGS.task_type == 'classification':
+                P_mean = np_sigmoid(np.asarray(P_mean))
+            elif FLAGS.task_type == 'regression':
+                P_mean = np.asarray(P_mean)
             mean = np.mean(P_mean, axis=0)
     
             Y_batch_total = np.concatenate((Y_batch_total, Y_batch), axis=0)
             Y_pred_total = np.concatenate((Y_pred_total, mean), axis=0)
 
         eval_loss /= num
-        eval_accuracy = accuracy_score(Y_batch_total, np.around(Y_pred_total).astype(int))
-        eval_auroc = 0.0
-        try:
-            eval_auroc = roc_auc_score(Y_batch_total, Y_pred_total)
-        except:
-            eval_auroc = 0.0    
+        if FLAGS.task_type == 'classification':
+            eval_accuracy = accuracy_score(Y_batch_total, np.around(Y_pred_total).astype(int))
+            eval_auroc = 0.0
+            try:
+                eval_auroc = roc_auc_score(Y_batch_total, Y_pred_total)
+            except:
+                eval_auroc = 0.0    
+        elif FLAGS.task_type == 'regression':
+            eval_mae = np.mean(np.abs(Y_batch_total - Y_pred_total))
 
         # Save network! 
         ckpt_path = os.path.join(FLAGS.save_directory,
@@ -116,8 +128,11 @@ def training(model, FLAGS,
         # Print Results
         print ("Time for", epoch, "-th epoch: ", et-st)
         print ("Loss        Train:", round(train_loss,3), "\t Evaluation:", round(eval_loss,3))
-        print ("Accuracy    Train:", round(train_accuracy,3), "\t Evaluation:", round(eval_accuracy,3))
-        print ("AUROC       Train:", round(train_auroc,3), "\t Evaluation:", round(eval_auroc,3))
+        if FLAGS.task_type == 'classification':
+            print ("Accuracy    Train:", round(train_accuracy,3), "\t Evaluation:", round(eval_accuracy,3))
+            print ("AUROC       Train:", round(train_auroc,3), "\t Evaluation:", round(eval_auroc,3))
+        elif FLAGS.task_type == 'regression':
+            print ("MAE    Train:", round(train_mae,3), "\t Evaluation:", round(eval_mae,3))
     total_et = time.time()
     print ("Finish training! Total required time for training : ", (total_et-total_st))
 
@@ -137,15 +152,22 @@ def training(model, FLAGS,
         
         # MC-sampling
         P_mean = []
+        P_logvar = []
         for n in range(FLAGS.num_test_samplings):
             Y_mean, Y_logvar, loss = model.test(A_batch, X_batch, Y_batch)
             P_mean.append(Y_mean.flatten())
+            P_logvar.append(Y_logvar.flatten())
 
-        P_mean = np_sigmoid(np.asarray(P_mean))
-
+        if FLAGS.task_type == 'classification':
+            P_mean = np_sigmoid(np.asarray(P_mean))
+            ale_unc = np.mean(P_mean*(1.0-P_mean), axis=0)
+            epi_unc = np.mean(P_mean**2, axis=0) - np.mean(P_mean, axis=0)**2
+        elif FLAGS.task_type == 'regression':
+            P_mean = np.asarray(P_mean)
+            P_logvar = np.exp(np.asarray(P_logvar))            
+            ale_unc = np.mean(P_logvar, axis=0)
+            epi_unc = np.var(P_mean, axis=0)
         mean = np.mean(P_mean, axis=0)
-        ale_unc = np.mean(P_mean*(1.0-P_mean), axis=0)
-        epi_unc = np.mean(P_mean**2, axis=0) - np.mean(P_mean, axis=0)**2
         tot_unc = ale_unc + epi_unc
     
         Y_batch_total = np.concatenate((Y_batch_total, Y_batch), axis=0)
@@ -295,6 +317,7 @@ if __name__ == '__main__':
         os.mkdir(FLAGS.statistics_directory)
 
     print("Do Single-Task Learning")
+    print("Task type:", FLAGS.task_type)
     print("Hidden dimension of graph convolution layers:", FLAGS.hidden_dim)
     print("Hidden dimension of readout & MLP layers:", FLAGS.latent_dim)
     print("Maximum number of allowed atoms:", FLAGS.max_atoms)
