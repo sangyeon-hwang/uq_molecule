@@ -28,9 +28,10 @@ class mc_dropout():
 
         self.loss = None
         if(self.FLAGS.task_type == 'regression'):
-            self.loss = self.loss_regression(self.P, self.P_mean, self.P_logvar)
+            self.nll, reg_loss = self.loss_regression(self.P, self.P_mean, self.P_logvar)
         elif(self.FLAGS.task_type == 'classification'):
-            self.loss = self.loss_classification(self.P, self.P_mean)
+            self.nll, reg_loss = self.loss_classification(self.P, self.P_mean)
+        self.loss = self.nll + reg_loss
 
         self.lr = tf.Variable(0.0, trainable = False)
         self.opt = self.optimizer( self.lr, self.FLAGS.optimizer )
@@ -53,10 +54,9 @@ class mc_dropout():
         P_mean = tf.cast(P_mean, tf.float32)
         P_logvar = tf.cast(P_logvar, tf.float32)
 
-        pred_loss = tf.reduce_mean(0.5*tf.exp(-P_logvar)*(P_truth-P_mean)**2 + P_logvar*0.5)
+        nll = tf.reduce_mean(0.5*tf.exp(-P_logvar)*(P_truth-P_mean)**2 + P_logvar*0.5)
         reg_loss = tf.reduce_sum(tf.losses.get_regularization_losses())
-        total_loss = pred_loss + reg_loss
-        return total_loss
+        return nll, reg_loss
 
     def loss_classification(self, P_truth, P_mean):
         P_truth = tf.reshape(P_truth, shape=[-1])
@@ -64,25 +64,32 @@ class mc_dropout():
         P_truth = tf.cast(P_truth, tf.float32)
         P_mean = tf.cast(P_mean, tf.float32)
 
-        pred_loss = tf.reduce_mean(tf.nn.sigmoid_cross_entropy_with_logits(labels=P_truth, logits=P_mean))
+        nll = tf.reduce_mean(tf.nn.sigmoid_cross_entropy_with_logits(labels=P_truth, logits=P_mean))
         reg_loss = tf.reduce_sum(tf.losses.get_regularization_losses())
-        total_loss = pred_loss + reg_loss
-        return total_loss
+        return nll, reg_loss
 
     def optimizer(self, lr, opt_type):
         optimizer = tf.train.AdamOptimizer(learning_rate=lr, beta1=self.FLAGS.beta1, beta2=self.FLAGS.beta2, epsilon=1e-09)
         return optimizer.minimize(self.loss)
 
     def train(self, A, X, P):
-        opt, P_mean, P_logvar, loss = self.sess.run([self.opt, self.P_mean, self.P_logvar, self.loss], feed_dict = {self.A : A, self.X : X, self.P : P})
-        return P_mean, P_logvar, loss
+        feed_dict = {self.A : A, self.X : X, self.P : P}
+        opt, P_mean, P_logvar, nll, loss = self.sess.run(
+            [self.opt, self.P_mean, self.P_logvar, self.nll, self.loss],
+            feed_dict=feed_dict)
+        return P_mean, P_logvar, nll, loss
 
     def test(self, A, X, P):
-        P_mean, P_logvar, loss = self.sess.run([self.P_mean, self.P_logvar, self.loss], feed_dict = {self.A : A, self.X : X, self.P : P})
-        return P_mean, P_logvar, loss
+        feed_dict = {self.A : A, self.X : X, self.P : P}
+        P_mean, P_logvar, nll, loss = self.sess.run(
+            [self.P_mean, self.P_logvar, self.nll, self.loss],
+            feed_dict=feed_dict)
+        return P_mean, P_logvar, nll, loss
 
     def predict(self, A, X):
-        P_mean, P_logvar = self.sess.run([self.P_mean, self.P_logvar], feed_dict = {self.A : A, self.X : X})
+        feed_dict = {self.A : A, self.X : X}
+        P_mean, P_logvar = self.sess.run([self.P_mean, self.P_logvar],
+                                         feed_dict=feed_dict)
         return P_mean, P_logvar
 
     def save(self, ckpt_path, global_step):

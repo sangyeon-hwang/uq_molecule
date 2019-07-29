@@ -16,9 +16,6 @@ from utils import utils
 
 np.set_printoptions(precision=3)
 
-def np_sigmoid(x):
-    return 1./(1.+np.exp(-x))
-
 def training(model, FLAGS,
              smi_train, smi_eval, smi_test,
              prop_train, prop_eval, prop_test):
@@ -49,21 +46,23 @@ def training(model, FLAGS,
         prop_train = np.asarray(prop_train)
 
         # TRAIN
-        num = 0
+        #num = 0
+        train_nll = 0.0
         train_loss = 0.0
         Y_pred_total = np.array([])
         Y_batch_total = np.array([])
         for i in range(num_batches_train):
-            num += 1
+            #num += 1
             st_i = time.time()
             total_iter += 1
             A_batch, X_batch = utils.convert_to_graph(smi_train[i*batch_size:(i+1)*batch_size], FLAGS.max_atoms) 
             Y_batch = prop_train[i*batch_size:(i+1)*batch_size]
 
-            Y_mean, Y_logvar, loss = model.train(A_batch, X_batch, Y_batch)
+            Y_mean, Y_logvar, nll, loss = model.train(A_batch, X_batch, Y_batch)
+            train_nll += nll
             train_loss += loss
             if FLAGS.task_type == 'classification':
-                Y_pred = np_sigmoid(Y_mean.flatten())
+                Y_pred = utils.np_sigmoid(Y_mean.flatten())
             elif FLAGS.task_type == 'regression':
                 Y_pred = Y_mean.flatten()
             Y_pred_total = np.concatenate((Y_pred_total, Y_pred), axis=0)
@@ -71,7 +70,8 @@ def training(model, FLAGS,
 
             et_i = time.time()
 
-        train_loss /= num
+        train_nll /= num_batches_train
+        train_loss /= num_batches_train
         if FLAGS.task_type == 'classification':
             train_accuracy = accuracy_score(Y_batch_total, np.around(Y_pred_total).astype(int))
             train_auroc = 0.0
@@ -86,6 +86,7 @@ def training(model, FLAGS,
         Y_pred_total = np.array([])
         Y_batch_total = np.array([])
         num = 0
+        eval_nll = 0.0
         eval_loss = 0.0
         for i in range(num_batches_eval):
             A_batch, X_batch = utils.convert_to_graph(smi_eval[i*batch_size:(i+1)*batch_size], FLAGS.max_atoms) 
@@ -95,12 +96,13 @@ def training(model, FLAGS,
             P_mean = []
             for n in range(FLAGS.num_eval_samplings):
                 num += 1
-                Y_mean, Y_logvar, loss = model.test(A_batch, X_batch, Y_batch)
+                Y_mean, Y_logvar, nll, loss = model.test(A_batch, X_batch, Y_batch)
+                eval_nll += nll
                 eval_loss += loss
                 P_mean.append(Y_mean.flatten())
 
             if FLAGS.task_type == 'classification':
-                P_mean = np_sigmoid(np.asarray(P_mean))
+                P_mean = utils.np_sigmoid(np.asarray(P_mean))
             elif FLAGS.task_type == 'regression':
                 P_mean = np.asarray(P_mean)
             mean = np.mean(P_mean, axis=0)
@@ -108,6 +110,7 @@ def training(model, FLAGS,
             Y_batch_total = np.concatenate((Y_batch_total, Y_batch), axis=0)
             Y_pred_total = np.concatenate((Y_pred_total, mean), axis=0)
 
+        eval_nll /= num
         eval_loss /= num
         if FLAGS.task_type == 'classification':
             eval_accuracy = accuracy_score(Y_batch_total, np.around(Y_pred_total).astype(int))
@@ -128,6 +131,7 @@ def training(model, FLAGS,
         # Print Results
         print ("Time for", epoch, "-th epoch: ", et-st)
         print ("Loss        Train:", round(train_loss,3), "\t Evaluation:", round(eval_loss,3))
+        print ("NLL         Train:", round(train_nll,3), "\t Evaluation:", round(eval_nll,3))
         if FLAGS.task_type == 'classification':
             print ("Accuracy    Train:", round(train_accuracy,3), "\t Evaluation:", round(eval_accuracy,3))
             print ("AUROC       Train:", round(train_auroc,3), "\t Evaluation:", round(eval_auroc,3))
@@ -159,7 +163,7 @@ def training(model, FLAGS,
             P_logvar.append(Y_logvar.flatten())
 
         if FLAGS.task_type == 'classification':
-            P_mean = np_sigmoid(np.asarray(P_mean))
+            P_mean = utils.np_sigmoid(np.asarray(P_mean))
             ale_unc = np.mean(P_mean*(1.0-P_mean), axis=0)
             epi_unc = np.mean(P_mean**2, axis=0) - np.mean(P_mean, axis=0)**2
         elif FLAGS.task_type == 'regression':
