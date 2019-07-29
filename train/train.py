@@ -49,6 +49,8 @@ def training(model, FLAGS,
         #num = 0
         train_nll = 0.0
         train_loss = 0.0
+        train_mse = 0.0
+        train_mlv = 0.0
         Y_pred_total = np.array([])
         Y_batch_total = np.array([])
         for i in range(num_batches_train):
@@ -58,9 +60,11 @@ def training(model, FLAGS,
             A_batch, X_batch = utils.convert_to_graph(smi_train[i*batch_size:(i+1)*batch_size], FLAGS.max_atoms) 
             Y_batch = prop_train[i*batch_size:(i+1)*batch_size]
 
-            Y_mean, Y_logvar, nll, loss = model.train(A_batch, X_batch, Y_batch)
+            Y_mean, Y_logvar, nll, loss, mse, mlv = model.train(A_batch, X_batch, Y_batch)
             train_nll += nll
             train_loss += loss
+            train_mse += mse
+            train_mlv += mlv
             if FLAGS.task_type == 'classification':
                 Y_pred = utils.np_sigmoid(Y_mean.flatten())
             elif FLAGS.task_type == 'regression':
@@ -72,6 +76,8 @@ def training(model, FLAGS,
 
         train_nll /= num_batches_train
         train_loss /= num_batches_train
+        train_mse /= num_batches_train
+        train_mlv /= num_batches_train
         if FLAGS.task_type == 'classification':
             train_accuracy = accuracy_score(Y_batch_total, np.around(Y_pred_total).astype(int))
             train_auroc = 0.0
@@ -88,6 +94,8 @@ def training(model, FLAGS,
         num = 0
         eval_nll = 0.0
         eval_loss = 0.0
+        eval_mse = 0.0
+        eval_mlv = 0.0
         for i in range(num_batches_eval):
             A_batch, X_batch = utils.convert_to_graph(smi_eval[i*batch_size:(i+1)*batch_size], FLAGS.max_atoms) 
             Y_batch = prop_eval[i*batch_size:(i+1)*batch_size]
@@ -96,9 +104,11 @@ def training(model, FLAGS,
             P_mean = []
             for n in range(FLAGS.num_eval_samplings):
                 num += 1
-                Y_mean, Y_logvar, nll, loss = model.test(A_batch, X_batch, Y_batch)
+                Y_mean, Y_logvar, nll, loss, mse, mlv = model.test(A_batch, X_batch, Y_batch)
                 eval_nll += nll
                 eval_loss += loss
+                eval_mse += mse
+                eval_mlv += mlv
                 P_mean.append(Y_mean.flatten())
 
             if FLAGS.task_type == 'classification':
@@ -112,6 +122,8 @@ def training(model, FLAGS,
 
         eval_nll /= num
         eval_loss /= num
+        eval_mse /= num
+        eval_mlv /= num
         if FLAGS.task_type == 'classification':
             eval_accuracy = accuracy_score(Y_batch_total, np.around(Y_pred_total).astype(int))
             eval_auroc = 0.0
@@ -132,6 +144,8 @@ def training(model, FLAGS,
         print ("Time for", epoch, "-th epoch: ", et-st)
         print ("Loss        Train:", round(train_loss,3), "\t Evaluation:", round(eval_loss,3))
         print ("NLL         Train:", round(train_nll,3), "\t Evaluation:", round(eval_nll,3))
+        print ("MSE         Train:", round(train_mse,3), "\t Evaluation:", round(eval_mse,3))
+        print ("MLV         Train:", round(train_mlv,3), "\t Evaluation:", round(eval_mlv,3))
         if FLAGS.task_type == 'classification':
             print ("Accuracy    Train:", round(train_accuracy,3), "\t Evaluation:", round(eval_accuracy,3))
             print ("AUROC       Train:", round(train_auroc,3), "\t Evaluation:", round(eval_auroc,3))
@@ -158,7 +172,7 @@ def training(model, FLAGS,
         P_mean = []
         P_logvar = []
         for n in range(FLAGS.num_test_samplings):
-            Y_mean, Y_logvar, loss = model.test(A_batch, X_batch, Y_batch)
+            Y_mean, Y_logvar, nll, loss, mse, mlv = model.test(A_batch, X_batch, Y_batch)
             P_mean.append(Y_mean.flatten())
             P_logvar.append(Y_logvar.flatten())
 

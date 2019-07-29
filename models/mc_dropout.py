@@ -28,7 +28,7 @@ class mc_dropout():
 
         self.loss = None
         if(self.FLAGS.task_type == 'regression'):
-            self.nll, reg_loss = self.loss_regression(self.P, self.P_mean, self.P_logvar)
+            self.nll, reg_loss, self.mse, self.mlv = self.loss_regression(self.P, self.P_mean, self.P_logvar)
         elif(self.FLAGS.task_type == 'classification'):
             self.nll, reg_loss = self.loss_classification(self.P, self.P_mean)
         self.loss = self.nll + reg_loss
@@ -54,9 +54,12 @@ class mc_dropout():
         P_mean = tf.cast(P_mean, tf.float32)
         P_logvar = tf.cast(P_logvar, tf.float32)
 
-        nll = tf.reduce_mean(0.5*tf.exp(-P_logvar)*(P_truth-P_mean)**2 + P_logvar*0.5)
+        #nll = tf.reduce_mean(0.5*tf.exp(-P_logvar)*(P_truth-P_mean)**2 + P_logvar*0.5)
+        mse = tf.reduce_mean(0.5*tf.exp(-P_logvar)*(P_truth-P_mean)**2)
+        mlv = tf.reduce_mean(P_logvar*0.5)
+        nll = mse + mlv
         reg_loss = tf.reduce_sum(tf.losses.get_regularization_losses())
-        return nll, reg_loss
+        return nll, reg_loss, mse, mlv
 
     def loss_classification(self, P_truth, P_mean):
         P_truth = tf.reshape(P_truth, shape=[-1])
@@ -74,17 +77,31 @@ class mc_dropout():
 
     def train(self, A, X, P):
         feed_dict = {self.A : A, self.X : X, self.P : P}
-        opt, P_mean, P_logvar, nll, loss = self.sess.run(
-            [self.opt, self.P_mean, self.P_logvar, self.nll, self.loss],
-            feed_dict=feed_dict)
-        return P_mean, P_logvar, nll, loss
+        if(self.FLAGS.task_type == 'regression'):
+            opt, P_mean, P_logvar, nll, loss, mse, mlv = self.sess.run(
+                [self.opt, self.P_mean, self.P_logvar, self.nll, self.loss,
+                 self.mse, self.mlv],
+                feed_dict=feed_dict)
+        elif(self.FLAGS.task_type == 'classification'):
+            opt, P_mean, P_logvar, nll, loss = self.sess.run(
+                [self.opt, self.P_mean, self.P_logvar, self.nll, self.loss],
+                feed_dict=feed_dict)
+            mse = mlv = None
+        return P_mean, P_logvar, nll, loss, mse, mlv
 
     def test(self, A, X, P):
         feed_dict = {self.A : A, self.X : X, self.P : P}
-        P_mean, P_logvar, nll, loss = self.sess.run(
-            [self.P_mean, self.P_logvar, self.nll, self.loss],
-            feed_dict=feed_dict)
-        return P_mean, P_logvar, nll, loss
+        if(self.FLAGS.task_type == 'regression'):
+            P_mean, P_logvar, nll, loss, mse, mlv = self.sess.run(
+                [self.P_mean, self.P_logvar, self.nll, self.loss,
+                 self.mse, self.mlv],
+                feed_dict=feed_dict)
+        elif(self.FLAGS.task_type == 'classification'):
+            P_mean, P_logvar, nll, loss = self.sess.run(
+                [self.P_mean, self.P_logvar, self.nll, self.loss],
+                feed_dict=feed_dict)
+            mse = mlv = None
+        return P_mean, P_logvar, nll, loss, mse, mlv
 
     def predict(self, A, X):
         feed_dict = {self.A : A, self.X : X}

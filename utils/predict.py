@@ -169,4 +169,4 @@ if __name__ == '__main__':
     model = mc_dropout(FLAGS)
     model.restore(FLAGS.model_path)
     print("Model restored from:", FLAGS.model_path)
-    predict(model, FLAGS, smi_list)
+    predict(model, FLAGS, smi_list, prop_list)
