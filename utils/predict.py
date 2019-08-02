@@ -16,24 +16,20 @@ import utils
 
 np.set_printoptions(precision=3)
 
-def np_sigmoid(x):
-    return 1./(1.+np.exp(-x))
-
-def predict(model, FLAGS, smi_list, prop_list=None):
+def predict(model, FLAGS, data):
     total_st = time.time()
-    num_batches = len(smi_list)//FLAGS.batch_size + 1
-
+    #num_batches = len(smi_list)//FLAGS.batch_size + 1
     Y_pred_total = np.array([])
     Y_batch_total = np.array([])
     ale_unc_total = np.array([])
     epi_unc_total = np.array([])
     tot_unc_total = np.array([])
-    for i in range(num_batches):
-        A_batch, X_batch = utils.convert_to_graph(
-            smi_list[i*FLAGS.batch_size : (i+1)*FLAGS.batch_size],
-            FLAGS.max_atoms)
-        if prop_list:
-            Y_batch = prop_list[i*FLAGS.batch_size:(i+1)*FLAGS.batch_size]
+    batches = utils.prepare_batches(data, FLAGS.batch_size)
+    for batch in batches:
+        A_batch, X_batch = utils.convert_to_graph(batch['smiles'],
+                                                  FLAGS.max_atoms)
+        if FLAGS.save_truth:
+            Y_batch = batch['label']
         
         # MC-sampling
         P_mean = []
@@ -44,7 +40,7 @@ def predict(model, FLAGS, smi_list, prop_list=None):
             P_logvar.append(Y_logvar.flatten())
 
         if FLAGS.task_type == 'classification':
-            P_mean = np_sigmoid(np.asarray(P_mean))
+            P_mean = utils.np_sigmoid(np.asarray(P_mean))
             ale_unc = np.mean(P_mean*(1.0-P_mean), axis=0)
             epi_unc = np.mean(P_mean**2, axis=0) - np.mean(P_mean, axis=0)**2
         elif FLAGS.task_type == 'regression':
@@ -54,8 +50,8 @@ def predict(model, FLAGS, smi_list, prop_list=None):
             epi_unc = np.var(P_mean, axis=0)
         mean = np.mean(P_mean, axis=0)
         tot_unc = ale_unc + epi_unc
-    
-        if prop_list:
+
+        if FLAGS.save_truth:
             Y_batch_total = np.concatenate((Y_batch_total, Y_batch), axis=0)
         Y_pred_total = np.concatenate((Y_pred_total, mean), axis=0)
         ale_unc_total = np.concatenate((ale_unc_total, ale_unc), axis=0)
@@ -63,7 +59,7 @@ def predict(model, FLAGS, smi_list, prop_list=None):
         tot_unc_total = np.concatenate((tot_unc_total, tot_unc), axis=0)
 
     _prefix = FLAGS.output_prefix + '_mc_'
-    if prop_list:
+    if FLAGS.save_truth:
         np.save(_prefix + 'truth', Y_batch_total)
     np.save(_prefix + 'pred', Y_pred_total)
     np.save(_prefix + 'epi_unc', epi_unc_total)
@@ -72,22 +68,11 @@ def predict(model, FLAGS, smi_list, prop_list=None):
     print ("Finish predictions. Total time:", time.time() - total_st)
 
 if __name__ == '__main__':
-#    dim1 = 32
-#    dim2 = 256
-#    max_atoms = 150
-#    num_layer = 4
-#    batch_size = 256
-#    epoch_size = 100
-#    learning_rate = 0.001
-#    regularization_scale = 1e-4
-#    beta1 = 0.9
-#    beta2 = 0.98
-
     # Hyperparameters for a transfer-trained model
     parser = argparse.ArgumentParser()
     parser.add_argument('--task_type',
                         default='classification',
-                        help='classification | regression')
+                        choices=('classification', 'regression'))
     parser.add_argument('--hidden_dim',
                         type=int,
                         default=32,
@@ -112,10 +97,6 @@ if __name__ == '__main__':
                         type=int,
                         default=256,
                         help='Batch size')
-#    parser.add_argument('--epoch_size',
-#                        type=int,
-#                        default=100,
-#                        help='Epoch size')
     parser.add_argument('--regularization_scale',
                         type=float,
                         default=1e-4,
@@ -131,10 +112,6 @@ if __name__ == '__main__':
     parser.add_argument('--optimizer',
                         default='Adam',
                         help='Adam | SGD | RMSProp') 
-#    parser.add_argument('--init_lr',
-#                        type=float,
-#                        default=1e-3,
-#                        help='Initial learning rate')
     parser.add_argument('--model_path',
                         help='Name to use in saving models')
     parser.add_argument('--input_path',
@@ -152,13 +129,18 @@ if __name__ == '__main__':
     FLAGS = parser.parse_args()
 
     # Load data.
-    smi_list, prop_list = utils.load_input(FLAGS.input_path, FLAGS.max_atoms)
-    FLAGS.num_train = len(smi_list)
+    data = utils.load_input(FLAGS.input_path, FLAGS.max_atoms)
+    FLAGS.num_train = len(data)
+    # Prepare to save true labels if present.
+    if data['label'].notnull().all():
+        FLAGS.save_truth = True
+    else:
+        FLAGS.save_truth = False
 
     print("Task type:", FLAGS.task_type)
     print("Maximum number of allowed atoms:", FLAGS.max_atoms)
     print("Model path to use:", FLAGS.model_path)
-    print("Num data to predict:", len(smi_list))
+    print("Num data to predict:", len(data))
     print("Num MC samplings:", FLAGS.num_samplings)
 
     # Set CUDA_VISIBLE_DEVICES if requested.
@@ -169,4 +151,4 @@ if __name__ == '__main__':
     model = mc_dropout(FLAGS)
     model.restore(FLAGS.model_path)
     print("Model restored from:", FLAGS.model_path)
-    predict(model, FLAGS, smi_list, prop_list)
+    predict(model, FLAGS, data)

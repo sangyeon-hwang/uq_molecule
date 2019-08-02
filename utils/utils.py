@@ -5,6 +5,7 @@ import numpy as np
 import pandas as pd
 from rdkit import Chem
 from sklearn import metrics
+from sklearn.model_selection import train_test_split
 
 def available_cuda_devices():
     import pynvml
@@ -24,18 +25,29 @@ def set_cuda_devices(num_devices=1):
 def np_sigmoid(x):
     return 1./(1.+np.exp(-x))
 
-def calculate_accuracy_auroc(y_truth, y_pred):    
+def classification_scores(y_truth, y_pred):
+    """Compute several binary-classification scores.
+
+    Returns
+    -------
+    accuracy
+    auroc
+    precision
+    recall
+    f1_score
+    """
     y_truth = y_truth.astype(int)
     try:
         auroc = metrics.roc_auc_score(y_truth, y_pred)
     except:
         print("Error in computing AUROC!")
-        auroc = 0.0    
+        auroc = 0.0
+    # Convert predictions to binaries for the other scores.
     y_pred = np.around(y_pred).astype(int)
     accuracy = metrics.accuracy_score(y_truth, y_pred)
     precision = metrics.precision_score(y_truth, y_pred)
     recall = metrics.recall_score(y_truth, y_pred)
-    f1_score = 2 * (precision*recall) / (precision+recall)
+    f1_score = metrics.f1_score(y_truth, y_pred)
     return accuracy, auroc, precision, recall, f1_score
 
 def shuffle_two_list(list1, list2):
@@ -44,10 +56,53 @@ def shuffle_two_list(list1, list2):
     list1, list2 = zip(*list_total)
     return list1, list2
 
+def prepare_batches(data, batch_size, pos_neg_ratio=None, sample=False):
+    """Batch generator.
+
+    Arguments
+    ---------
+    data: pd.DataFrame
+    batch_size: int
+    pos_neg_ratio: List[Union[int, float]] of length 2
+        Sampling ratios of positive and negative data points.
+        `data['label']` should only contain 0s and 1s.
+        If None, samples follow the original population.
+    sample: bool
+        Whether to prepare batches by random samplings or not.
+        Always True if `pos_neg_ratio` is given.
+
+    Returns
+    -------
+    Generator of `pd.DataFrame`, each of length `batch_size`.
+    """
+    num_batches = len(data) // batch_size
+
+    # If batch_size > len(data), yield one batch by upsampling.
+    if not num_batches:
+        yield data.sample(n=batch_size, replace=True)
+
+    for i in range(num_batches):
+        if pos_neg_ratio:
+            num_pos = data['label'].sum()
+            num_neg = len(data) - num_pos
+            weights = np.ones(len(data))
+            pos_weight = num_neg/num_pos * pos_neg_ratio[0]/pos_neg_ratio[1]
+            weights[data['label']==1] *= pos_weight
+            yield data.sample(n=batch_size, weights=weights, replace=True)
+
+        elif sample:
+            yield data.sample(n=batch_size)
+
+        else:
+            yield data.iloc[i*batch_size : (i+1)*batch_size]
+
 def prepare_data(path1, path2=None, max_atoms=None,
-                 test_ratio=0.2, eval_ratio=0.1,
-                 initial_shuffle=True):
-    """Prepare SMILES and label lists from data files.
+                 test_size=0.2, eval_size=0.1,
+                 shuffle=True):
+    """Prepare SMILES and label data from text files.
+
+    The returned three `pd.DataFrame`s have 'smiles' and 'label'
+    for column names.
 
     Arguments
     ---------
@@ -57,61 +112,49 @@ def prepare_data(path1, path2=None, max_atoms=None,
     path2: str | None
         Test data path.
         If this is None, `path1` is used as a total set.
-    test_ratio, eval_ratio: float
-        See `split_train_eval_test`.
-    initial_shuffle: bool
-        Shuffle the data after fetched.
-        If `path2` is given, the `path1` data is shuffled
-        before splitted into training and validation sets.
+    test_size, eval_size: int | float
+        Number or portion of test/eval data.
+        If float, should be between 0.0 and 1.0.
+    shuffle: bool
+        Shuffle the data before split.
 
     Returns
     -------
-    smi_train
-    smi_eval
-    smi_test
-    prop_train
-    prop_eval
-    prop_test
+    train_data: pd.DataFrame
+    eval_data: pd.DataFrame
+    test_data: pd.DataFrame
     """
     # `path1` is the total dataset.
     if path2 is None:
-        smi_total, prop_total = load_input(path1, max_atoms)
-        if initial_shuffle:
-            smi_total, prop_total = shuffle_two_list(smi_total,
-                                                     prop_total)
-        smi_train, smi_eval, smi_test = split_train_eval_test(
-            smi_total, test_ratio, eval_ratio)
-        prop_train, prop_eval, prop_test = split_train_eval_test(
-            prop_total, test_ratio, eval_ratio)
+        total_data = load_input(path1, max_atoms)
+        train_eval, test_data = train_test_split(total_data,
+                                                 test_size=test_size,
+                                                 shuffle=shuffle)
+        train_data, eval_data = train_test_split(train_eval,
+                                                 test_size=eval_size,
+                                                 shuffle=shuffle)
 
     # `path1` is the training set and `path2` the test sets.
     else:
-        smi_train, prop_train = load_input(path1, max_atoms)
-        smi_test, prop_test = load_input(path2, max_atoms)
-        if initial_shuffle:
-            smi_train, prop_train = shuffle_two_list(smi_train,
-                                                     prop_train)
-            smi_train, smi_eval, _ = split_train_eval_test(smi_train,
-                                                           0.,
-                                                           eval_ratio)
-            prop_train, prop_eval, _ = split_train_eval_test(prop_train,
-                                                             0.,
-                                                             eval_ratio)
-    return (smi_train, smi_eval, smi_test,
-            prop_train, prop_eval, prop_test)
+        train_eval = load_input(path1, max_atoms)
+        train_data, eval_data = train_test_split(train_eval,
+                                                 test_size=eval_size,
+                                                 shuffle=shuffle)
+        test_data = load_input(path2, max_atoms)
 
-def load_input(path, max_num_atoms=None):
+    return train_data, eval_data, test_data
+
+def load_input(path, max_atoms=None) -> pd.DataFrame:
     data = pd.read_csv(path, names=['smiles', 'label'])
-    # Filter by number of atoms if requested.
-    if max_num_atoms is not None:
-        mols = (Chem.MolFromSmiles(smiles) for smiles in data.smiles)
-        mask = [mol.GetNumAtoms() <= max_num_atoms if mol else False
-                for mol in mols]
-        smi_list = data.smiles.loc[mask].tolist()
+
+    # Filter by max number of atoms if requested.
+    if max_atoms is None:
+        mask = [True] * len(data)
     else:
-        smi_list = data.smiles.tolist()
-    prop_list = data.label.tolist()
-    return smi_list, prop_list
+        mask = (Chem.MolFromSmiles(smiles).GetNumAtoms() <= max_atoms
+                for smiles in data['smiles'])
+
+    return data.loc[mask]
 
 def load_input_zinc():
     smi_list = []

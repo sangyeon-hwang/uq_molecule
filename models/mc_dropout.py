@@ -26,7 +26,6 @@ class mc_dropout():
         self._X = blocks.encoder_gat_gate(self.X, self.A, num_layers, hidden_dim, num_attn, length, num_train)
         self.Z, self.P_mean, self.P_logvar = blocks.readout_and_mlp(self._X, latent_dim, length, num_train)
 
-        self.loss = None
         if(self.FLAGS.task_type == 'regression'):
             self.nll, reg_loss, self.mse, self.mlv = self.loss_regression(self.P, self.P_mean, self.P_logvar)
         elif(self.FLAGS.task_type == 'classification'):
@@ -76,7 +75,7 @@ class mc_dropout():
         return optimizer.minimize(self.loss)
 
     def train(self, A, X, P):
-        feed_dict = {self.A : A, self.X : X, self.P : P}
+        feed_dict = {self.A: A, self.X: X, self.P: P}
         if(self.FLAGS.task_type == 'regression'):
             opt, P_mean, P_logvar, nll, loss, mse, mlv = self.sess.run(
                 [self.opt, self.P_mean, self.P_logvar, self.nll, self.loss,
@@ -86,11 +85,11 @@ class mc_dropout():
             opt, P_mean, P_logvar, nll, loss = self.sess.run(
                 [self.opt, self.P_mean, self.P_logvar, self.nll, self.loss],
                 feed_dict=feed_dict)
-            mse = mlv = None
+            mse = mlv = 0.
         return P_mean, P_logvar, nll, loss, mse, mlv
 
     def test(self, A, X, P):
-        feed_dict = {self.A : A, self.X : X, self.P : P}
+        feed_dict = {self.A: A, self.X: X, self.P: P}
         if(self.FLAGS.task_type == 'regression'):
             P_mean, P_logvar, nll, loss, mse, mlv = self.sess.run(
                 [self.P_mean, self.P_logvar, self.nll, self.loss,
@@ -100,11 +99,11 @@ class mc_dropout():
             P_mean, P_logvar, nll, loss = self.sess.run(
                 [self.P_mean, self.P_logvar, self.nll, self.loss],
                 feed_dict=feed_dict)
-            mse = mlv = None
+            mse = mlv = 0.
         return P_mean, P_logvar, nll, loss, mse, mlv
 
     def predict(self, A, X):
-        feed_dict = {self.A : A, self.X : X}
+        feed_dict = {self.A: A, self.X: X}
         P_mean, P_logvar = self.sess.run([self.P_mean, self.P_logvar],
                                          feed_dict=feed_dict)
         return P_mean, P_logvar
